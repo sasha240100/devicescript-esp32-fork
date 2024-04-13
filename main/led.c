@@ -11,13 +11,19 @@
 
 typedef struct timer_info {
     uint8_t tim_num;
-    uint8_t pin;
     uint8_t bits;
     uint32_t div;
     uint32_t period;
 } timer_info_t;
 
+typedef struct channel_info {
+    uint8_t ch_num;
+    uint8_t pin;
+    timer_info_t timer;
+} channel_info_t;
+
 static timer_info_t timers[LEDC_TIMER_MAX];
+static channel_info_t channels[LEDC_CHANNEL_MAX];
 
 uint8_t cpu_mhz = APB_CLK_FREQ / 1000000;
 
@@ -40,7 +46,11 @@ static void init(void) {
         return;
     for (int i = 0; i < LEDC_TIMER_MAX; ++i) {
         timers[i].tim_num = i;
-        timers[i].pin = 0xff;
+        timers[i].period = 0x00;
+    }
+    for (int i = 0; i < LEDC_CHANNEL_MAX; ++i) {
+        channels[i].ch_num = i;
+        channels[i].pin = 0xff;
     }
     periph_module_enable(PERIPH_LEDC_MODULE);
     ledc_ll_set_slow_clk_sel(&LEDC, LEDC_SLOW_CLK_APB);
@@ -51,6 +61,7 @@ uint8_t jd_pwm_init(uint8_t pin, uint32_t period, uint32_t duty, uint8_t prescal
 
     uint32_t period_cycles = period * prescaler;
     timer_info_t *t = NULL;
+    channel_info_t *ch = NULL;
 
     for (int bits = LEDC_TIMER_BIT_MAX - 1; bits >= 4; bits--) {
         uint32_t div = (period_cycles << 8) >> bits;
@@ -63,7 +74,7 @@ uint8_t jd_pwm_init(uint8_t pin, uint32_t period, uint32_t duty, uint8_t prescal
 
         for (unsigned i = 0; i < LEDC_TIMER_MAX; ++i) {
             t = &timers[i];
-            if (t->pin == pin)
+            if (t->period == period && t->div == div)
                 break;
             t = NULL;
         }
@@ -71,33 +82,73 @@ uint8_t jd_pwm_init(uint8_t pin, uint32_t period, uint32_t duty, uint8_t prescal
         if (t == NULL)
             for (unsigned i = 0; i < LEDC_TIMER_MAX; ++i) {
                 t = &timers[i];
-                if (t->pin == 0xff)
+                if (t->period == 0x00) {
                     break;
+                }
                 t = NULL;
             }
 
         if (t == NULL) {
             DMESG("! out of LEDC timers");
+
             hw_panic();
         }
 
-        t->pin = pin;
+        for (unsigned i = 0; i < LEDC_CHANNEL_MAX; ++i) {
+            ch = &channels[i];
+            if (ch->pin == pin)
+                break;
+            ch = NULL;
+        }
+
+        if (ch == NULL)
+            for (unsigned i = 0; i < LEDC_CHANNEL_MAX; ++i) {
+                ch = &channels[i];
+                if (ch->pin == 0xff) {
+                    break;
+                }
+                ch = NULL;
+            }
+
+        if (ch == NULL) {
+            DMESG("! out of LEDC channels");
+
+            hw_panic();
+        }
+
         t->div = div;
         t->bits = bits;
         t->period = period;
+
+        // DMESG("! === TIMER ===");
+        // DMESG("! TIMER num: %d", t->tim_num);
+        // DMESG("! TIMER period: %lu", t->period);
+        // DMESG("! TIMER div: %lu", t->div);
+        // DMESG("! === TIMER ===");
+
+        ch->pin = pin;
+        ch->timer = *t;
+
+        // DMESG("! === CHANNEL ===");
+        // DMESG("! CHANNEL num: %d", ch->ch_num);
+        // DMESG("! CHANNEL pin: %d", ch->pin);
+        // DMESG("! CHANNEL timer num: %d", (&ch->timer)->tim_num);
+        // DMESG("! CHANNEL timer period: %lu", (&ch->timer)->period);
+        // DMESG("! === CHANNEL ===");
+
         apply_config(t);
 
         break;
     }
 
-    int ch = t->tim_num; // we bind timers to channels 1-1
+    int ch_num = ch->ch_num; // we don't bind timers to channels 1-1
     int tim = t->tim_num;
-    int pwm_id = t->tim_num + 1;
+    int pwm_id = ch->ch_num + 1;
 
     jd_pwm_set_duty(pwm_id, duty);
 
-    ledc_ll_bind_channel_timer(&LEDC, LEDC_LOW_SPEED_MODE, ch, tim);
-    ledc_ll_ls_channel_update(&LEDC, LEDC_LOW_SPEED_MODE, ch);
+    ledc_ll_bind_channel_timer(&LEDC, LEDC_LOW_SPEED_MODE, ch_num, tim);
+    ledc_ll_ls_channel_update(&LEDC, LEDC_LOW_SPEED_MODE, ch_num);
 
     jd_pwm_enable(pwm_id, 1);
 
@@ -106,40 +157,43 @@ uint8_t jd_pwm_init(uint8_t pin, uint32_t period, uint32_t duty, uint8_t prescal
 
 void jd_pwm_set_duty(uint8_t pwm_id, uint32_t duty) {
     JD_ASSERT(pwm_id > 0);
-    JD_ASSERT(pwm_id <= LEDC_TIMER_MAX);
+    JD_ASSERT(pwm_id <= LEDC_CHANNEL_MAX);
 
-    timer_info_t *t = &timers[pwm_id - 1];
-    int ch = t->tim_num;
+    channel_info_t *ch = &channels[pwm_id - 1];
+    timer_info_t *t = &ch->timer;
+
+    int ch_num = ch->ch_num;
 
     uint32_t max = 1 << t->bits;
     duty = max * duty / t->period;
     if (duty >= max)
         duty = max - 1;
 
-    ledc_ll_set_duty_int_part(&LEDC, LEDC_LOW_SPEED_MODE, ch, duty);
-    ledc_ll_set_duty_direction(&LEDC, LEDC_LOW_SPEED_MODE, ch, 1);
-    ledc_ll_set_duty_num(&LEDC, LEDC_LOW_SPEED_MODE, ch, 0);
-    ledc_ll_set_duty_cycle(&LEDC, LEDC_LOW_SPEED_MODE, ch, 0);
-    ledc_ll_set_duty_scale(&LEDC, LEDC_LOW_SPEED_MODE, ch, 0);
-    ledc_ll_ls_channel_update(&LEDC, LEDC_LOW_SPEED_MODE, ch);
+    ledc_ll_set_duty_int_part(&LEDC, LEDC_LOW_SPEED_MODE, ch_num, duty);
+    ledc_ll_set_duty_direction(&LEDC, LEDC_LOW_SPEED_MODE, ch_num, 1);
+    ledc_ll_set_duty_num(&LEDC, LEDC_LOW_SPEED_MODE, ch_num, 0);
+    ledc_ll_set_duty_cycle(&LEDC, LEDC_LOW_SPEED_MODE, ch_num, 0);
+    ledc_ll_set_duty_scale(&LEDC, LEDC_LOW_SPEED_MODE, ch_num, 0);
+    ledc_ll_ls_channel_update(&LEDC, LEDC_LOW_SPEED_MODE, ch_num);
 
-    ledc_ll_set_sig_out_en(&LEDC, LEDC_LOW_SPEED_MODE, ch, true);
-    ledc_ll_set_duty_start(&LEDC, LEDC_LOW_SPEED_MODE, ch, true);
-    ledc_ll_ls_channel_update(&LEDC, LEDC_LOW_SPEED_MODE, ch);
+    ledc_ll_set_sig_out_en(&LEDC, LEDC_LOW_SPEED_MODE, ch_num, true);
+    ledc_ll_set_duty_start(&LEDC, LEDC_LOW_SPEED_MODE, ch_num, true);
+    ledc_ll_ls_channel_update(&LEDC, LEDC_LOW_SPEED_MODE, ch_num);
 }
 
 void jd_pwm_enable(uint8_t pwm_id, bool enabled) {
     JD_ASSERT(pwm_id > 0);
-    JD_ASSERT(pwm_id <= LEDC_TIMER_MAX);
+    JD_ASSERT(pwm_id <= LEDC_CHANNEL_MAX);
 
-    timer_info_t *t = &timers[pwm_id - 1];
-    int ch = t->tim_num;
+    channel_info_t *ch = &channels[pwm_id - 1];
 
-    pin_setup_output(t->pin);
+    int ch_num = ch->ch_num;
+
+    pin_setup_output(ch->pin);
     if (enabled) {
         bool output_invert = false;
         esp_rom_gpio_connect_out_signal(
-            t->pin, ledc_periph_signal[LEDC_LOW_SPEED_MODE].sig_out0_idx + ch, output_invert, 0);
+            ch->pin, ledc_periph_signal[LEDC_LOW_SPEED_MODE].sig_out0_idx + ch_num, output_invert, 0);
     }
 }
 
