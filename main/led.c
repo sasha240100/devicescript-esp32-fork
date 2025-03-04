@@ -74,7 +74,7 @@ uint8_t jd_pwm_init(uint8_t pin, uint32_t period, uint32_t duty, uint8_t prescal
 
         for (unsigned i = 0; i < LEDC_TIMER_MAX; ++i) {
             t = &timers[i];
-            if (t->period == period && t->div == div)
+            if (i > 0 && t->period == period && t->div == div) // reuse after second timer (first is reserved?)
                 break;
             t = NULL;
         }

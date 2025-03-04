@@ -29,6 +29,7 @@ int jd_wifi_connect(const char *ssid, const char *pw) {
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(84)); // WIFI_POWER_21dBm
     ESP_ERROR_CHECK(esp_wifi_connect());
 
     return 0;
