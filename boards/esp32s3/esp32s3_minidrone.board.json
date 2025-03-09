@@ -5,17 +5,22 @@
     "$description": "A bare ESP32-S3 board without any pin functions.",
     "archId": "esp32s3",
     "url": "https://www.espressif.com/en/products/socs/esp32-s3",
+    "$services": [
+        {
+            "name": "buttonBOOT",
+            "pin": 0,
+            "service": "button"
+        }
+    ],
     "log": {
         "pinTX": "P43"
     },
     "led": {
-        "pin": "P2",
+        "pin": 2,
         "isMono": true
     },
     "pins": {
-        "P0": 0,
         "P1": 1,
-        "P2": 2,
         "P3": 3,
         "P4": 4,
         "P5": 5,

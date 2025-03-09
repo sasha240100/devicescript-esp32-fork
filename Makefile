@@ -41,6 +41,9 @@ prep: devicescript/cli/built/devicescript-cli.cjs sdkconfig.defaults refresh-ver
 
 all: inner-build patch
 
+setup:
+	. $HOME/esp/esp-idf/export.sh
+
 inner-build: check-export check-submodule prep
 	$(IDF) --ccache build
 	$(MAKE) combine
