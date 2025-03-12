@@ -1,4 +1,5 @@
 dependencies:
   espressif/esp_tinyusb: "~1.0.0"
+  espressif/tinyusb: "0.15.0~10"
   idf:
     version: ">=5.0.2"
