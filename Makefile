@@ -83,7 +83,7 @@ patch:
 		boards/$(TARGET)/*.board.json $(PATCH_ARGS)
 
 clean:
-	rm -rf sdkconfig sdkconfig.defaults $(BUILD)
+	rm -rf sdkconfig sdkconfig.defaults $(BUILD) dependencies.lock dist managed_components
 
 vscode:
 	. $$IDF_PATH/export.sh ; $(IDF) --ccache build
